@@ -1,4 +1,5 @@
 """Models for sACN Receiver integration."""
+import asyncio
 from threading import Lock
 
 import sacn
@@ -37,6 +38,51 @@ class SacnUniverse:
         ColorMode.RGBWW: 6,
         ColorMode.WHITE: 1,
     }
+    hass: HomeAssistant = None
+
+    def __init__(self, universe: int, entities: list[str], mode: ColorMode, hass: HomeAssistant):
+        self.mode = mode
+        self.entities = entities
+        self.previous_values = {entity: None for entity in entities}
+        if mode == ColorMode.COLOR_TEMP:
+            self.init_ct_range(entities, hass)
+        self.hass = hass
+        self._update_lock = Lock()
+        self._last_packet_lock = Lock()
+        self._latest_packet = None
+        SacnSingleton().listen_to_universe(universe, self.universe_data_cb)
+
+    async def _process_updates(self) -> None:
+        """Process all pending updates while holding the lock."""
+        try:
+            # Process packets until there are no more new ones
+            while self._latest_packet is not None:
+                with self._last_packet_lock:
+                    current_packet = self._latest_packet
+                    self._latest_packet = None  # Clear for next potential update
+
+                # Process the current packet
+                new_config = self.render_dmx_data(current_packet.dmxData)
+                tasks = []
+                for entity_id in self.entities:
+                    new_entity_config = new_config[entity_id]
+                    if self.previous_values[entity_id] != new_entity_config:
+                        tasks.append(self.hass.services.async_call(
+                            domain="light",
+                            service="turn_on",
+                            service_data={
+                                "entity_id": entity_id,
+                                **new_entity_config
+                            }
+                        ))
+                        self.previous_values[entity_id] = new_entity_config
+
+                await asyncio.gather(*tasks)
+        finally:
+            self._update_lock.release()
+
+
+
 
     def render_dmx_data(self, dmx_data):
         output = {}
@@ -87,37 +133,22 @@ class SacnUniverse:
         return output
 
     def universe_data_cb(self, packet):
-        print(packet)
-        print(packet.dmxData)
+        """Handle incoming DMX data packets."""
         if packet.dmxStartCode != 0x00:  # ignore non-DMX-data packets
             return
 
-        new_config = self.render_dmx_data(packet.dmxData)
-        for entity_id in self.entities:
-            new_entity_config = new_config[entity_id]
-            # TODO periodic write everything anyway
-            if self.previous_values[entity_id] != new_entity_config:
-                self.hass.services.call(
-                    domain="light",
-                    service="turn_on",
-                    service_data={
-                        "entity_id": entity_id,
-                        **new_entity_config
-                    }
-                )
+        # Store the latest packet
+        with self._last_packet_lock:
+            self._latest_packet = packet
+
+        # Try to acquire the lock - if we can't, return immediately as another update is in progress
+        if not self._update_lock.acquire(blocking=False):
+            return
+
+        self.hass.create_task(self._process_updates())
 
     def init_ct_range(self, entities, hass: HomeAssistant):
         self.ct_range = {}
         for entity_id in entities:
             entity = hass.states.get(entity_id)
             self.ct_range[entity_id] = (entity.min_color_temp_kelvin, entity.max_color_temp_kelvin - entity.min_color_temp_kelvin)
-
-
-    def __init__(self, universe: int, entities: list[str], mode: ColorMode, hass: HomeAssistant):
-        self.mode = mode
-        self.entities = entities
-        self.previous_values = {entity: None for entity in entities}
-        if mode == ColorMode.COLOR_TEMP:
-            self.init_ct_range(entities, hass)
-        self.hass = hass
-        SacnSingleton().listen_to_universe(universe, self.universe_data_cb)
