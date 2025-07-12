@@ -1,0 +1,11 @@
+{
+  "domain": "sacn_receiver",
+  "name": "SACN Receiver",
+  "codeowners": ["@saty9"],
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/sacn_receiver",
+  "integration_type": "device",
+  "iot_class": "assumed_state",
+  "requirements": ["sacn==1.11.0"],
+  "version": "0.1.0"
+}
