@@ -21,10 +21,21 @@ class SacnSingleton:
 
     def __init__(self):
         self.receiver = sacn.sACNreceiver()
-        self.receiver.start()
+        self.receiver_count = 0
 
     def listen_to_universe(self, universe_number, callback):
+        with self._lock:
+            if self.receiver_count == 0:
+                self.receiver.start()
+            self.receiver_count += 1
         self.receiver.register_listener("universe", callback, universe=universe_number)
+
+    def stop_listening(self, callback):
+        self.receiver.remove_listener(callback)
+        with self._lock:
+            self.receiver_count -= 1
+            if self.receiver_count == 0:
+                self.receiver.stop()
 
 class SacnUniverse:
     MODE_CHANNEL_MAP = {
@@ -81,9 +92,6 @@ class SacnUniverse:
                 await asyncio.gather(*tasks)
         finally:
             self._update_lock.release()
-
-
-
 
     def render_dmx_data(self, dmx_data):
         output = {}
@@ -153,3 +161,6 @@ class SacnUniverse:
         for entity_id in entities:
             entity = hass.states.get(entity_id)
             self.ct_range[entity_id] = (entity.min_color_temp_kelvin, entity.max_color_temp_kelvin - entity.min_color_temp_kelvin)
+
+    def stop(self):
+        SacnSingleton().stop_listening(self.universe_data_cb)

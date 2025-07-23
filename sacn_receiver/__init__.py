@@ -11,6 +11,11 @@ PLATFORMS = [Platform.BUTTON]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up sACN Receiver from a config entry."""
     # Setup logic will go here
-    SacnUniverse(entry.data[CONF_UNIVERSE], entry.data[CONF_LIGHTS], entry.data[CONF_MODE], hass)
+    universe = SacnUniverse(entry.data[CONF_UNIVERSE], entry.data[CONF_LIGHTS], entry.data[CONF_MODE], hass)
+    entry.runtime_data = universe
     return True
 
+async def async_unload_entry(_hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    universe: SacnUniverse = entry.runtime_data
+    universe.stop()
+    return True
