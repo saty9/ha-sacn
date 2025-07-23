@@ -73,7 +73,8 @@ class SacnUniverse:
                             service_data={
                                 "entity_id": entity_id,
                                 **new_entity_config
-                            }
+                            },
+                            blocking=True,
                         ))
                         self.previous_values[entity_id] = new_entity_config
 
