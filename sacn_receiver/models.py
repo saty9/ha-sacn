@@ -8,6 +8,7 @@ import itertools
 from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 
+FLOAT_FROM_DMX = [x/255 for x in range(256)]
 
 class SacnSingleton:
     _instance = None
@@ -106,15 +107,15 @@ class SacnUniverse:
                     brightness = data[0]
                     # Map color temp from 0-255 to default Kelvin range
                     ct_min, ct_range = self.ct_range[device]
-                    color_temp = ct_min + ct_range * (data[1] / 255)
+                    color_temp = ct_min + ct_range * (FLOAT_FROM_DMX[data[1]])
                     output[device] = {
                         "brightness": brightness,
                         "color_temp_kelvin": int(color_temp)
                     }
                 case ColorMode.HS:
                     brightness = data[0]
-                    hue = (data[1] / 255)
-                    saturation = (data[2] / 255)
+                    hue = (FLOAT_FROM_DMX[data[1]])
+                    saturation = (FLOAT_FROM_DMX[data[2]])
                     output[device] = {
                         "hs_color": (hue, saturation),
                         "brightness": brightness
@@ -122,7 +123,7 @@ class SacnUniverse:
                 case ColorMode.XY:
                     output[device] = {
                         "brightness": data[0],
-                        "xy_color": (data[1] / 255, data[2] / 255)
+                        "xy_color": (FLOAT_FROM_DMX[data[1]], FLOAT_FROM_DMX[data[2]])
                     }
                 case ColorMode.RGB:
                     output[device] = {
